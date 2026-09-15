@@ -9,7 +9,9 @@ description = "Static analysis and explanation toolkit for PromQL queries"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "promql-analyzer contributors" }]
+authors = [
+  { name = "Ranga Godhandaraman", email = "rangabashyam22@gmail.com" },
+]
 keywords = [
     "promql",
     "prometheus",
@@ -46,6 +48,11 @@ dev = [
 
 [project.scripts]
 promql-analyze = "promql_analyzer.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ranga-godhandaraman/promql-parser-lib"
+Repository = "https://github.com/ranga-godhandaraman/promql-parser-lib"
+Issues = "https://github.com/ranga-godhandaraman/promql-parser-lib/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
