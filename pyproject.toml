@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-  { name = "Ranga Godhandaraman", email = "rangabashyam22@gmail.com" },
+  { name = "Ranga Bashyam G", email = "rangabashyam22@gmail.com" },
 ]
 keywords = [
     "promql",
