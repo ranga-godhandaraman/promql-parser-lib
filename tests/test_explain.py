@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from promql_analyzer import analyze
+from promql_analyzer import dude_look
 
 
 def test_explain_simple_metric() -> None:
-    result = analyze("up")
+    result = dude_look("up")
     text = result.explain()
     assert "up" in text
     assert "metric named" in text
@@ -16,7 +16,7 @@ def test_explain_simple_metric() -> None:
 
 
 def test_explain_range_function() -> None:
-    result = analyze("rate(http_requests_total[5m])")
+    result = dude_look("rate(http_requests_total[5m])")
     text = result.explain()
     assert "per-second" in text
     assert "rate" in text.lower() or "rate of increase" in text
@@ -27,7 +27,7 @@ def test_explain_range_function() -> None:
 
 
 def test_explain_label_matcher() -> None:
-    result = analyze('http_requests_total{status=~"5.."}')
+    result = dude_look('http_requests_total{status=~"5.."}')
     text = result.explain(style="detailed")
     assert "status" in text
     assert "5.." in text
@@ -35,7 +35,7 @@ def test_explain_label_matcher() -> None:
 
 
 def test_explain_aggregation() -> None:
-    result = analyze("sum(rate(http_requests_total[5m]))")
+    result = dude_look("sum(rate(http_requests_total[5m]))")
     text = result.explain(style="detailed")
     assert "rate" in text.lower() or "per-second" in text
     assert "sums" in text.lower()
@@ -47,7 +47,7 @@ def test_explain_grouping() -> None:
       rate(http_requests_total{status=~"5.."}[5m])
     )
     """
-    result = analyze(query)
+    result = dude_look(query)
     text = result.explain(style="detailed")
     assert "namespace" in text
     assert "sums" in text.lower()
@@ -56,7 +56,7 @@ def test_explain_grouping() -> None:
 
 
 def test_explain_nested_query_styles() -> None:
-    result = analyze("round(sum(rate(metric[5m])))")
+    result = dude_look("round(sum(rate(metric[5m])))")
     concise = result.explain(style="concise")
     detailed = result.explain(style="detailed")
     assert concise
@@ -68,6 +68,6 @@ def test_explain_nested_query_styles() -> None:
 
 
 def test_explain_rejects_unknown_style() -> None:
-    result = analyze("up")
+    result = dude_look("up")
     with pytest.raises(ValueError, match="Unknown explanation style"):
         result.explain(style="poetic")

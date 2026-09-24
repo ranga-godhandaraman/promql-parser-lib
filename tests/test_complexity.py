@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from promql_analyzer import ComplexityLevel, analyze
+from promql_analyzer import ComplexityLevel, dude_look
 
 
 def _factor_names(result) -> set[str]:
@@ -10,14 +10,14 @@ def _factor_names(result) -> set[str]:
 
 
 def test_complexity_simple_metric() -> None:
-    result = analyze("up")
+    result = dude_look("up")
     assert result.complexity.score == 5
     assert result.complexity.level == ComplexityLevel.SIMPLE
     assert "base" in _factor_names(result)
 
 
 def test_complexity_single_function() -> None:
-    result = analyze("rate(http_requests_total[5m])")
+    result = dude_look("rate(http_requests_total[5m])")
     assert 10 <= result.complexity.score <= 25
     assert result.complexity.level in {
         ComplexityLevel.SIMPLE,
@@ -28,8 +28,8 @@ def test_complexity_single_function() -> None:
 
 
 def test_complexity_nested_functions() -> None:
-    nested = analyze("sum(rate(http_requests_total[5m]))")
-    single = analyze("rate(http_requests_total[5m])")
+    nested = dude_look("sum(rate(http_requests_total[5m]))")
+    single = dude_look("rate(http_requests_total[5m])")
     assert nested.complexity.score > single.complexity.score
     assert "function_nesting" in _factor_names(nested)
     assert 20 <= nested.complexity.score <= 40
@@ -37,14 +37,14 @@ def test_complexity_nested_functions() -> None:
 
 
 def test_complexity_regex_matcher() -> None:
-    plain = analyze('http_requests_total{status="500"}')
-    regex = analyze('http_requests_total{status=~"5.."}')
+    plain = dude_look('http_requests_total{status="500"}')
+    regex = dude_look('http_requests_total{status=~"5.."}')
     assert regex.complexity.score > plain.complexity.score
     assert "regex_matchers" in _factor_names(regex)
 
 
 def test_complexity_aggregation_with_grouping() -> None:
-    result = analyze("sum by(namespace)(rate(http_requests_total[5m]))")
+    result = dude_look("sum by(namespace)(rate(http_requests_total[5m]))")
     names = _factor_names(result)
     assert "aggregations" in names
     assert "grouping_labels" in names
@@ -64,7 +64,7 @@ def test_complexity_complex_query() -> None:
       )
     )
     """
-    result = analyze(query)
+    result = dude_look(query)
     assert result.complexity.score >= 60
     assert result.complexity.level in {
         ComplexityLevel.COMPLEX,
@@ -80,8 +80,8 @@ def test_complexity_complex_query() -> None:
 
 
 def test_complexity_score_capped_and_deterministic() -> None:
-    a = analyze("metric_a + metric_b")
-    b = analyze("metric_a + metric_b")
+    a = dude_look("metric_a + metric_b")
+    b = dude_look("metric_a + metric_b")
     assert a.complexity.score == b.complexity.score
     assert 0 <= a.complexity.score <= 100
     assert "binary_operators" in _factor_names(a)

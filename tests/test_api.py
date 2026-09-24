@@ -13,21 +13,25 @@ from promql_analyzer import (
     InvalidPromQL,
     PromQLSyntaxError,
     Severity,
-    analyze,
+    dude_look,
     result_to_dict,
 )
 
 
 def test_public_exports() -> None:
-    assert callable(promql_analyzer.analyze)
+    assert callable(promql_analyzer.dude_look)
     assert promql_analyzer.InvalidPromQL is PromQLSyntaxError
-    assert "analyze" in promql_analyzer.__all__
+    assert "dude_look" in promql_analyzer.__all__
     assert "AnalyzerConfig" in promql_analyzer.__all__
     assert "result_to_dict" in promql_analyzer.__all__
+    assert "RepositoryScanner" in promql_analyzer.__all__
+    assert "RepositoryReport" in promql_analyzer.__all__
+    assert "Finding" in promql_analyzer.__all__
+    assert "AlertRecord" in promql_analyzer.__all__
 
 
 def test_result_to_dict_stable_keys() -> None:
-    result = analyze("sum(rate(http_requests_total[5m]))")
+    result = dude_look("sum(rate(http_requests_total[5m]))")
     payload = result_to_dict(result)
     assert set(payload) >= {
         "query",
@@ -53,7 +57,7 @@ def test_result_to_dict_stable_keys() -> None:
 
 def test_invalid_promql_useful_error() -> None:
     with pytest.raises(InvalidPromQL) as exc_info:
-        analyze("sum(")
+        dude_look("sum(")
     err = exc_info.value
     assert err.message
     assert "Invalid PromQL" in str(err)
@@ -64,12 +68,12 @@ def test_invalid_promql_useful_error() -> None:
 
 def test_invalid_promql_debug_includes_parser_detail() -> None:
     with pytest.raises(PromQLSyntaxError) as exc_info:
-        analyze("sum(", debug=True)
+        dude_look("sum(", debug=True)
     assert "[parser:" in str(exc_info.value)
 
 
 def test_analyzer_config_disables_rules() -> None:
-    result = analyze(
+    result = dude_look(
         "avg(http_requests_total)",
         config=AnalyzerConfig(disabled_rules=("PQL001",)),
     )
@@ -77,7 +81,7 @@ def test_analyzer_config_disables_rules() -> None:
 
 
 def test_analyzer_config_enabled_rules_only() -> None:
-    result = analyze(
+    result = dude_look(
         'avg(http_requests_total{pod=~".*"})',
         config=AnalyzerConfig(enabled_rules=("PQL002",)),
     )
@@ -86,7 +90,7 @@ def test_analyzer_config_enabled_rules_only() -> None:
 
 
 def test_analysis_result_type() -> None:
-    result = analyze("up")
+    result = dude_look("up")
     assert isinstance(result, AnalysisResult)
     assert result.structure.metrics == ("up",)
     assert result.complexity.score >= 0

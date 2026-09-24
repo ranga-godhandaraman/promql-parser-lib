@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from promql_analyzer import PromQLSyntaxError, analyze
+from promql_analyzer import PromQLSyntaxError, dude_look
 
 
 def test_simple_metric() -> None:
-    result = analyze("up")
+    result = dude_look("up")
     structure = result.structure
 
     assert structure.metrics == ("up",)
@@ -23,7 +23,7 @@ def test_simple_metric() -> None:
 
 
 def test_metric_with_labels() -> None:
-    result = analyze('http_requests_total{status="500"}')
+    result = dude_look('http_requests_total{status="500"}')
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -36,7 +36,7 @@ def test_metric_with_labels() -> None:
 
 
 def test_regex_matcher() -> None:
-    result = analyze('http_requests_total{status=~"5.."}')
+    result = dude_look('http_requests_total{status=~"5.."}')
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -49,7 +49,7 @@ def test_regex_matcher() -> None:
 
 
 def test_rate_query() -> None:
-    result = analyze("rate(http_requests_total[5m])")
+    result = dude_look("rate(http_requests_total[5m])")
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -60,7 +60,7 @@ def test_rate_query() -> None:
 
 
 def test_aggregation() -> None:
-    result = analyze("sum(rate(http_requests_total[5m]))")
+    result = dude_look("sum(rate(http_requests_total[5m]))")
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -81,7 +81,7 @@ def test_grouping() -> None:
       rate(http_requests_total[5m])
     )
     """
-    result = analyze(query)
+    result = dude_look(query)
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -95,7 +95,7 @@ def test_grouping() -> None:
 
 
 def test_grouping_without() -> None:
-    result = analyze("sum without(instance)(rate(http_requests_total[5m]))")
+    result = dude_look("sum without(instance)(rate(http_requests_total[5m]))")
     agg = result.structure.aggregations[0]
     assert agg.operator == "sum"
     assert agg.grouping == ("instance",)
@@ -103,7 +103,7 @@ def test_grouping_without() -> None:
 
 
 def test_nested_functions() -> None:
-    result = analyze("round(sum(rate(metric[5m])))")
+    result = dude_look("round(sum(rate(metric[5m])))")
     structure = result.structure
 
     assert structure.metrics == ("metric",)
@@ -114,7 +114,7 @@ def test_nested_functions() -> None:
 
 
 def test_multiple_metrics_binary_operator() -> None:
-    result = analyze("metric_a + metric_b")
+    result = dude_look("metric_a + metric_b")
     structure = result.structure
 
     assert structure.metrics == ("metric_a", "metric_b")
@@ -124,7 +124,7 @@ def test_multiple_metrics_binary_operator() -> None:
 
 
 def test_label_matcher_operators() -> None:
-    result = analyze('m{a="1",b!="2",c=~"x.*",d!~"y.*"}')
+    result = dude_look('m{a="1",b!="2",c=~"x.*",d!~"y.*"}')
     ops = {(m.label, m.operator, m.value) for m in result.structure.label_matchers}
     assert ops == {
         ("a", "=", "1"),
@@ -136,15 +136,15 @@ def test_label_matcher_operators() -> None:
 
 
 def test_offset_and_at_modifier() -> None:
-    result = analyze("http_requests_total offset 5m")
+    result = dude_look("http_requests_total offset 5m")
     assert result.structure.features.contains_offset is True
 
-    result_at = analyze("http_requests_total @ 1609746000")
+    result_at = dude_look("http_requests_total @ 1609746000")
     assert result_at.structure.features.contains_at_modifier is True
 
 
 def test_subquery_feature() -> None:
-    result = analyze("rate(http_requests_total[5m])[30m:1m]")
+    result = dude_look("rate(http_requests_total[5m])[30m:1m]")
     assert result.structure.features.contains_subquery is True
     assert result.structure.metrics == ("http_requests_total",)
 
@@ -159,7 +159,7 @@ def test_example_query_from_phase_brief() -> None:
       )
     )
     """
-    result = analyze(query)
+    result = dude_look(query)
     structure = result.structure
 
     assert structure.metrics == ("http_requests_total",)
@@ -178,4 +178,4 @@ def test_example_query_from_phase_brief() -> None:
 
 def test_invalid_query_raises() -> None:
     with pytest.raises(PromQLSyntaxError):
-        analyze("sum(")
+        dude_look("sum(")

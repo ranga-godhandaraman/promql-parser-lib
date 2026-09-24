@@ -1,4 +1,4 @@
-"""Top-level analysis entry point."""
+"""Top-level PromQL string analysis entry point."""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ from promql_analyzer.rules.registry import default_rules
 from promql_analyzer.structure import extract_structure
 
 
-def analyze(
+def dude_look(
     query: str,
     config: AnalyzerConfig | None = None,
     *,
     debug: bool = False,
 ) -> AnalysisResult:
-    """Analyze a PromQL query.
+    """Analyze a PromQL query string.
 
     Returns structural information, lint findings, a structural complexity
     score, and deterministic human-readable explanations.

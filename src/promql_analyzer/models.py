@@ -68,13 +68,22 @@ class QueryStructure:
 
 @dataclass(frozen=True)
 class Finding:
-    """A single static-analysis finding produced by a rule."""
+    """A single static-analysis finding.
+
+    V1 lint rules populate the core fields. V2 repository analyzers may also
+    set category, score, evidence, file_path, and rule_name.
+    """
 
     rule_id: str
     severity: Severity
     message: str
     explanation: str
     suggestion: str | None = None
+    category: str | None = None
+    score: float | None = None
+    evidence: tuple[str, ...] = ()
+    file_path: str | None = None
+    rule_name: str | None = None
 
 
 @dataclass(frozen=True)

@@ -2,245 +2,602 @@
 
 **PromQL Analyzer** is a static analysis and explanation toolkit for PromQL.
 
-It helps developers understand, review, and lint existing PromQL queries — without
-executing them against Prometheus.
+It helps you review PromQL queries and Prometheus alert/rule repositories **without
+executing queries** against Prometheus.
 
-Think of it as:
+> Ruff/Pylint-style analysis for PromQL — plus V2 repository-level alert risk review.
 
-> Ruff/Pylint-style analysis for PromQL, with deterministic explanations.
+---
+
+## Table of contents
+
+1. [What it is / is not](#what-it-is)
+2. [Installation](#installation)
+3. [Quick start](#quick-start)
+4. [V1 — single-query & file analysis](#v1--single-query--file-analysis)
+5. [V2 — repository analysis (`dude_rushup`)](#v2--repository-analysis-dude_rushup)
+6. [CLI reference](#cli-reference)
+7. [Exports](#exports)
+8. [Lint rules (PQL001–PQL005)](#lint-rules-pql001pql005)
+9. [Complexity score](#complexity-score)
+10. [Limitations](#limitations)
+11. [Development](#development)
+12. [Publishing](#publishing)
+
+---
 
 ## What it is
 
-- A Python library (`analyze(...)`) for structural analysis
-- A CLI (`promql-analyze`) for terminals and CI logs
-- Analysis of Prometheus rule YAML/YML files (`expr` fields)
-- A small set of heuristic lint rules (`PQL001`–`PQL005`)
-- A transparent structural complexity score (0–100)
-- Deterministic human-readable query explanations
+- **V1 library**: `dude_look(...)` for structural analysis of one PromQL string
+- **V1 file helpers**: `dude_analyze_promql` / `dude_analyze_yaml` / `dude_analyze_yml` / `dude_analyze_json`
+- **Lint rules**: `PQL001`–`PQL005` plus a transparent structural complexity score (0–100)
+- **V2 `dude_rushup`**: repository/folder scanners:
+  - `wild()` — noise-**risk** scoring
+  - `broken()` — broken / incomplete rules
+  - `vuln()` — potential secret / credential exposure
+  - `secuch()` — configurable security policy / hygiene
+  - `speakup()` — optimization **recommendations**
+  - `comeup_360()` — all of the above on **one shared scan**
+- **CLI**: `promql-analyze` (V1 commands + `rushup`)
 
 ## What it is NOT
 
 - Not a PromQL query engine
-- Not a Prometheus replacement
-- Not a runtime performance profiler
-- Not an AI/LLM service
+- Not a Prometheus / Alertmanager replacement
+- Not a runtime performance profiler or live noise detector
+- Not an AI / LLM service
 
-Static findings are heuristics. They never claim a query will definitely be slow.
+**Important:** Static analysis identifies *potential risk* and review signals. It does
+**not** guarantee runtime Prometheus/Alertmanager behavior, confirm vulnerabilities, or
+prove that an alert is actually noisy in production.
+
+---
 
 ## Installation
+
+Requires **Python 3.10+**.
 
 ```bash
 pip install promql-analyzer
 ```
 
-For local development:
+Verify:
 
 ```bash
-pip install -e ".[dev]"
+promql-analyze --version
 ```
 
-## Python usage
+### Local / editable install
+
+```bash
+git clone https://github.com/ranga-godhandaraman/promql-parser-lib.git
+cd promql-parser-lib   # or your local promql-analyzer checkout
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+promql-analyze --version
+pytest
+```
+
+Runtime dependencies (installed automatically):
+
+- `promql-parser`
+- `PyYAML`
+
+No optional Excel package is required — `.xlsx` export uses the standard library.
+
+---
+
+## Quick start
+
+### Analyze one query
+
+```bash
+promql-analyze dude-look 'sum(rate(http_requests_total[5m]))'
+```
 
 ```python
-from promql_analyzer import analyze, AnalyzerConfig
+from promql_analyzer import dude_look
 
-result = analyze(
-    'sum by(namespace)(rate(http_requests_total{status=~"5.."}[5m]))'
+result = dude_look("sum(rate(http_requests_total[5m]))")
+print(result.findings)
+print(result.complexity.score)
+print(result.explain())
+```
+
+### Analyze a whole alert repo (V2)
+
+```bash
+promql-analyze rushup ./alerts --360 --format json --output report.json
+```
+
+```python
+from promql_analyzer import dude_rushup
+
+report = dude_rushup.comeup_360("./alerts")
+print(report.summary)
+report.to_json("report.json")
+```
+
+---
+
+## V1 — single-query & file analysis
+
+### Python: `dude_look`
+
+```python
+from promql_analyzer import dude_look, AnalyzerConfig, InvalidPromQL
+
+result = dude_look(
+    'sum by(namespace)(rate(http_requests_total{status=~"5.."}[5m]))',
+    config=AnalyzerConfig(
+        scrape_interval_seconds=15,
+        max_grouping_labels=3,
+        max_nesting_depth=4,
+        disabled_rules=("PQL002",),  # optional
+    ),
 )
 
 print(result.structure.metrics)
 print(result.structure.functions)
+print(result.structure.aggregations)
 print(result.findings)
 print(result.complexity.score, result.complexity.level)
-print(result.explain())            # concise
-print(result.explain("detailed"))  # detailed
-print(result.to_dict())            # JSON-serializable dict
-```
-
-### Analyze Prometheus rule YAML
-
-```python
-from promql_analyzer import analyze_file
-
-report = analyze_file("alerts.yaml")  # or alerts.yml
-for item in report.queries:
-    print(item.source.rule_kind, item.source.rule_name, item.source.expr)
-    if item.error:
-        print("parse error:", item.error)
-    else:
-        print(item.result.findings)
-```
-
-`analyze_file()` also accepts plain `.promql` text files (single query).
-
-YAML support looks for string values under `expr` keys, covering:
-
-- Prometheus rule files (`groups[].rules[].expr`)
-- Prometheus Operator `PrometheusRule` resources (`spec.groups...`)
-
-### Configuration
-
-```python
-config = AnalyzerConfig(
-    scrape_interval_seconds=15,
-    max_grouping_labels=3,
-    max_nesting_depth=4,
-    disabled_rules=("PQL002",),
-)
-
-result = analyze(query, config=config)
+print(result.explain())                 # concise
+print(result.explain("detailed"))
+print(result.to_dict())                 # JSON-serializable
 ```
 
 ### Invalid PromQL
 
 ```python
-from promql_analyzer import analyze, InvalidPromQL
+from promql_analyzer import dude_look, InvalidPromQL
 
 try:
-    analyze("sum(")
+    dude_look("sum(")
 except InvalidPromQL as exc:
     print(exc.message)
-    print(exc.location)        # may be None
-    print(exc.parser_detail)   # raw detail available; shown in str(exc) only with debug=True
+    print(exc.location)         # may be None
+    print(exc.parser_detail)    # raw detail; included in str(exc) only with debug=True
 ```
 
 `InvalidPromQL` is an alias of `PromQLSyntaxError`.
 
-## CLI usage
+### Python: file helpers
 
-### Analyze an inline query
+```python
+from promql_analyzer import (
+    dude_analyze_promql,
+    dude_analyze_yaml,
+    dude_analyze_yml,
+    dude_analyze_json,
+)
 
-```bash
-promql-analyze analyze 'sum(rate(http_requests_total[5m]))'
+dude_analyze_promql("query.promql")   # .promql / .txt
+dude_analyze_yaml("alerts.yaml")      # .yaml only
+dude_analyze_yml("alerts.yml")        # .yml only
+dude_analyze_json("alerts.json")      # .json only
 ```
 
-### Explain a query
+Each helper validates the file extension. Structured formats discover PromQL from
+common fields (`expr`, `condition`, `query`, `promql`, …) and, when needed,
+other PromQL-looking string values (Prometheus rules, Prometheus Operator
+`PrometheusRule`, Osprey-style `condition` documents, etc.).
 
-```bash
-promql-analyze explain 'sum(rate(http_requests_total[5m]))'
-promql-analyze explain --style detailed 'sum(rate(http_requests_total[5m]))'
+```python
+report = dude_analyze_yaml("alerts.yaml")
+print(report.path, report.findings_count, report.has_errors)
+for item in report.queries:
+    print(item.source.rule_name, item.source.expr)
+    if item.error:
+        print("ERROR:", item.error)
+    else:
+        print(item.result.findings)
 ```
 
-### Analyze a file
+### V1 CLI commands
 
 ```bash
-# Single PromQL query file
-promql-analyze analyze-file query.promql
+# Inline query analysis
+promql-analyze dude-look 'sum(rate(http_requests_total[5m]))'
+promql-analyze dude-look --format json 'sum(rate(http_requests_total[5m]))'
+promql-analyze dude-look --style detailed --fail-on warning 'avg(http_requests_total)'
+promql-analyze dude-look --debug 'sum('
 
-# Prometheus rules YAML / YML (all expr fields)
-promql-analyze analyze-file alerts.yaml
-promql-analyze analyze-file alerts.yml --format json
-promql-analyze analyze-file alerts.yaml --fail-on warning
-```
+# Explanation only
+promql-analyze dude-explain 'sum(rate(http_requests_total[5m]))'
+promql-analyze dude-explain --style detailed 'sum(rate(http_requests_total[5m]))'
+promql-analyze dude-explain --format json 'up'
 
-### JSON output
+# Files
+promql-analyze dude-analyze-promql query.promql
+promql-analyze dude-analyze-yaml alerts.yaml
+promql-analyze dude-analyze-yml alerts.yml --format json
+promql-analyze dude-analyze-json alerts.json --fail-on warning
 
-```bash
-promql-analyze analyze --format json 'sum(rate(http_requests_total[5m]))'
-```
-
-JSON keys are stable and suitable for CI tooling.
-
-### Exit codes
-
-| Code | Meaning |
-|-----:|---------|
-| 0 | Success (and findings below the fail threshold) |
-| 1 | Findings met the `--fail-on` threshold |
-| 2 | Invalid PromQL, missing file, or other CLI error |
-
-Defaults:
-
-- `--fail-on error` — warnings do **not** fail the process
-- `--fail-on warning` — WARNING and ERROR fail
-- `--fail-on never` — always exit 0 after a successful parse/analysis
-
-Examples:
-
-```bash
-promql-analyze analyze --fail-on warning 'avg(http_requests_total)'
-promql-analyze analyze --fail-on never 'avg(http_requests_total)'
-promql-analyze analyze --debug 'sum('
-```
-
-### Useful flags
-
-```bash
-promql-analyze analyze \
+# Common V1 flags
+promql-analyze dude-look \
   --scrape-interval 15 \
   --max-grouping-labels 3 \
   --max-nesting-depth 4 \
   --disable-rule PQL001 \
   --style detailed \
   --format text \
+  --fail-on error \
   'sum(rate(http_requests_total[5m]))'
 ```
 
-## Rules
+---
 
-### PQL001 — Suspicious counter usage
+## V2 — repository analysis (`dude_rushup`)
 
-**Detects:** metrics ending in `_total` used without `rate()`, `irate()`, `increase()`, or `resets()`.
+V2 accepts a **single YAML/YML file**, a **directory**, or a **repository root**.
 
-**Why it matters:** counters are commonly rate-transformed before aggregation; direct use (for example `avg(http_requests_total)`) can be misleading.
+`comeup_360()` (and multi-flag CLI runs) use one shared pipeline:
 
-**False positives:** naming is only a heuristic. A gauge can end in `_total`.
+```text
+discover files
+    → parse YAML
+    → extract rules
+    → shared AnalysisContext
+    → run analyzers
+    → aggregate findings
+    → RepositoryReport
+```
 
-### PQL002 — Broad regex matcher
+Analyzers are **not** re-scanned five independent times inside `comeup_360()`.
 
-**Detects:** `label=~".*"` (WARNING) and patterns beginning with `.*` (INFO).
+### Analyzer APIs
 
-**Why it matters:** broad regex matching may evaluate many series. Cost depends on cardinality.
+| Function | Category | Purpose |
+|----------|----------|---------|
+| `dude_rushup.wild(path, config=None)` | `noise_risk` | 8-dimension noise-**risk** score |
+| `dude_rushup.broken(path, config=None)` | `broken` | Invalid YAML/PromQL, missing fields, duplicates |
+| `dude_rushup.vuln(path, config=None)` | `vuln` | Potential secrets / credentials in metadata |
+| `dude_rushup.secuch(path, config=None)` | `secuch` | Org policy: required labels, runbooks, URL allowlists |
+| `dude_rushup.speakup(path, config=None)` | `speakup` | Complexity / optimization **recommendations** |
+| `dude_rushup.comeup_360(path, config=None)` | *(all)* | Run enabled analyzers on one shared scan |
 
-**False positives:** some broad patterns are intentional and cheap on low-cardinality metrics.
+### Python examples
 
-### PQL003 — Suspicious rate window
+```python
+from promql_analyzer import (
+    dude_rushup,
+    RushupConfig,
+    NoiseRiskConfig,
+    BrokenConfig,
+    VulnConfig,
+    SecuchConfig,
+    SpeakupConfig,
+)
 
-**Detects:** short `rate()` / `irate()` ranges relative to `scrape_interval_seconds * rate_range_min_multiples`.
+# --- Full pass ---
+report = dude_rushup.comeup_360("alerts/")
 
-**Why it matters:** short windows may not contain enough samples for reliable rates.
+print(report.root)
+print(report.summary)                 # files / alerts / findings counts
+print(report.noise_summary)           # low / medium / high noise-risk
+print(report.inventory)               # duplicates, ownership/runbook stats
+print(len(report.speakup_suggestions))
 
-**False positives:** scrape intervals vary by environment; configure `AnalyzerConfig` / `--scrape-interval`.
+for f in report.findings:
+    print(f.category, f.rule_id, f.severity, f.file_path, f.rule_name)
+    print(" ", f.message)
 
-### PQL004 — Potential high-cardinality grouping
+# --- Individual analyzers ---
+dude_rushup.wild("alerts/file.yaml")
+dude_rushup.broken("alerts/")
+dude_rushup.vuln("alerts/")
+dude_rushup.secuch(
+    "alerts/",
+    config=SecuchConfig(
+        required_labels=("severity", "team"),
+        required_annotations=("summary",),
+        ownership_labels_any_of=("owner", "team"),
+        runbook_annotations_any_of=("runbook_url", "runbook"),
+        forbidden_labels=("password",),
+        allowed_url_domains=("docs.example.com", "wiki.example.com"),
+    ),
+)
+dude_rushup.speakup("alerts/")
+```
 
-**Detects:** aggregations grouping by more than `max_grouping_labels` labels. Optionally emits INFO for commonly high-cardinality label names.
+### Unified configuration (`RushupConfig`)
 
-**Why it matters:** many grouping labels can retain many output series.
+```python
+from promql_analyzer import RushupConfig, NoiseRiskConfig, BrokenConfig, SecuchConfig
 
-**False positives:** required high-dimension groupings are valid; raise the threshold when intentional.
+config = RushupConfig(
+    # Discovery
+    include_globs=("**/*.yaml", "**/*.yml"),
+    exclude_globs=("**/vendor/**", "**/.git/**", "**/.venv/**"),
+    follow_symlinks=False,
 
-### PQL005 — Excessive nesting
+    # Which analyzers run under comeup_360
+    enable_wild=True,
+    enable_broken=True,
+    enable_vuln=True,
+    enable_secuch=True,
+    enable_speakup=True,
 
-**Detects:** function/aggregation nesting deeper than `max_nesting_depth`.
+    # Analyzer-specific knobs
+    wild=NoiseRiskConfig(
+        volatile_metrics=("errors_total", "ems_events"),
+        stable_metrics=("node_new_status",),
+        state_metrics=("up",),
+        self_resolving_metrics=("node_uptime",),
+        tight_threshold_values=(85.0, 90.0),
+        low_max_percent=25,
+        medium_max_percent=55,
+    ),
+    broken=BrokenConfig(
+        required_alert_labels=("severity",),
+        required_alert_annotations=(),
+        require_for_on_alerts=False,
+        validate_promql=True,
+    ),
+    secuch=SecuchConfig(
+        required_labels=("severity",),
+        ownership_labels_any_of=("owner", "team"),
+        runbook_annotations_any_of=("runbook_url",),
+        allowed_url_domains=("docs.example.com",),
+    ),
+)
 
-**Why it matters:** deep nesting hurts readability/reviewability. This is not a runtime cost score.
+report = dude_rushup.comeup_360(".", config=config)
+# Comeup360Config is an alias of RushupConfig
+```
 
-**False positives:** some nested forms are idiomatic (for example histogram quantiles).
+Defaults are safe: you can call `comeup_360(path)` with no config.
 
-## Complexity
+### Sample repository summary
 
-`result.complexity.score` is a **structural** score from 0–100 with a transparent factor breakdown.
+```text
+PROMQL RUSHUP REPORT
 
-Levels:
+Root: /path/to/alerts
+Files scanned: 12
+Files parsed: 10
+Files failed: 1
+Alerts: 42
+Recording rules: 8
+Findings: 27
+
+Noise risk
+  analyzed=42 low=20 medium=15 high=7 avg=31.2%
+
+Inventory
+  duplicate_names=2 duplicate_exprs=1 near_duplicates=1
+```
+
+### Sample noise-risk finding
+
+```text
+NOISE001 WARNING [noise_risk]
+alerts/netapp.yaml :: NoisyRate
+Noise risk High (67%) for alert NoisyRate — static definition risk, not observed firing
+Suggestion: Review the highlighted rubric dimensions and consider longer `for` windows...
+```
+
+Per-alert detail is also on `report.noise_assessments` (dimension scores, reasons, %).
+
+### Sample broken / security / speakup findings
+
+```text
+BROKEN001 ERROR [broken]
+bad.yaml
+Invalid YAML / unreadable rules file
+
+BROKEN014 ERROR [broken]
+rules.yaml :: BrokenExpr
+Invalid PromQL expression
+
+BROKENDUP001 WARNING [broken]
+a.yaml :: Dup
+Duplicate alert name 'Dup' across 2 rules
+
+VULN002 ERROR [vuln]
+secrets.yaml :: Leaky
+Possible AWS access key id in rule metadata [HIGH potential risk]
+
+SECUCH003 WARNING [secuch]
+policy.yaml :: PolicyGap
+Missing ownership metadata
+
+SPEAKUP004 WARNING [speakup]
+opt.yaml :: Broad
+[recommendation] Broad regex matcher job=~".*"
+```
+
+---
+
+## CLI reference
+
+Entry point:
+
+```bash
+promql-analyze --version
+promql-analyze --help
+promql-analyze <command> --help
+```
+
+### Commands overview
+
+| Command | Description |
+|---------|-------------|
+| `dude-look` | Analyze an inline PromQL string |
+| `dude-explain` | Print a deterministic explanation |
+| `dude-analyze-promql` | Analyze a `.promql` / `.txt` file |
+| `dude-analyze-yaml` | Analyze a `.yaml` rules file |
+| `dude-analyze-yml` | Analyze a `.yml` rules file |
+| `dude-analyze-json` | Analyze a `.json` rules file |
+| `rushup` | V2 repository analysis |
+
+### `rushup` (V2)
+
+```bash
+promql-analyze rushup <path> [analyzer flags...] [output flags...]
+```
+
+`<path>` may be:
+
+- a single `.yaml` / `.yml` file
+- a directory
+- a repository root (recursive discovery)
+
+#### Analyzer flags
+
+| Flag | Behavior |
+|------|----------|
+| *(none)* | Same as `--360` (all analyzers) |
+| `--360` | Run wild + broken + vuln + secuch + speakup (one shared scan) |
+| `--wild` | Noise-risk only |
+| `--broken` | Broken/incomplete rules only |
+| `--vuln` | Potential security exposure only |
+| `--secuch` | Security policy / hygiene only |
+| `--speakup` | Optimization suggestions only |
+
+You can combine flags (`--broken --speakup`); the CLI still uses **one shared scan**.
+
+#### Output flags
+
+| Flag | Values | Notes |
+|------|--------|-------|
+| `--format` | `text` (default), `json`, `csv`, `tsv`, `xlsx` | |
+| `--output` / `-o` | file path | Write report to disk; **required** for `xlsx` |
+| `--fail-on` | `never`, `error` (default), `warning` | CI exit behavior |
+
+#### Full `rushup` examples
+
+```bash
+# All analyzers (text to stdout)
+promql-analyze rushup ./alerts
+promql-analyze rushup ./alerts --360
+
+# Single file
+promql-analyze rushup ./alerts/team-a.yaml --broken
+
+# Individual analyzers
+promql-analyze rushup ./alerts --wild
+promql-analyze rushup ./alerts --broken
+promql-analyze rushup ./alerts --vuln
+promql-analyze rushup ./alerts --secuch
+promql-analyze rushup ./alerts --speakup
+
+# Combined (still one scan)
+promql-analyze rushup ./alerts --broken --wild --speakup
+
+# JSON / CSV / TSV / Excel
+promql-analyze rushup ./alerts --360 --format json --output report.json
+promql-analyze rushup ./alerts --360 --format csv  --output findings.csv
+promql-analyze rushup ./alerts --360 --format tsv  --output findings.tsv
+promql-analyze rushup ./alerts --360 --format xlsx --output report.xlsx
+
+# CI: fail on ERROR findings (default)
+promql-analyze rushup ./alerts --360 --fail-on error
+
+# CI: also fail on WARNING
+promql-analyze rushup ./alerts --360 --fail-on warning
+
+# Always exit 0 after a successful run
+promql-analyze rushup ./alerts --360 --fail-on never
+```
+
+### Exit codes (all commands)
+
+| Code | Meaning |
+|-----:|---------|
+| `0` | Success (findings below `--fail-on` threshold) |
+| `1` | Findings met the `--fail-on` threshold (or failed YAML files under rushup) |
+| `2` | Invalid PromQL, missing path, bad flags, or other CLI error |
+
+---
+
+## Exports
+
+Works on any `RepositoryReport` from V2 analyzers / `comeup_360`:
+
+```python
+report = dude_rushup.comeup_360("alerts/")
+
+report.to_json("report.json")   # full structured JSON (sorted keys)
+report.to_csv("findings.csv")   # flattened findings rows
+report.to_tsv("findings.tsv")
+report.to_excel("report.xlsx")  # multi-sheet workbook
+```
+
+Or without writing a file:
+
+```python
+json_text = report.to_json()
+csv_text = report.to_csv()
+```
+
+### Excel sheets
+
+| Sheet | Contents |
+|-------|----------|
+| Summary | Scan counts, inventory, noise aggregates |
+| Alerts | Alert + recording rule inventory |
+| Findings | All findings |
+| Noise Risk | Per-alert noise assessments |
+| Broken | `category=broken` findings |
+| Security | `vuln` + `secuch` findings |
+| Suggestions | `speakup` recommendations / alternatives |
+
+---
+
+## Lint rules (PQL001–PQL005)
+
+Used by V1 `dude_look` / file helpers, and reused inside `speakup` / `comeup_360`.
+
+| ID | Detects |
+|----|---------|
+| **PQL001** | `_total` metrics used without `rate` / `irate` / `increase` / `resets` |
+| **PQL002** | Broad regex matchers (`=~".*"` or leading `.*`) |
+| **PQL003** | Short `rate`/`irate` windows vs scrape-interval multiples |
+| **PQL004** | Aggregations grouping by many labels |
+| **PQL005** | Deep function/aggregation nesting |
+
+Disable via config or CLI:
+
+```bash
+promql-analyze dude-look --disable-rule PQL001 --disable-rule PQL002 '...'
+```
+
+```python
+AnalyzerConfig(disabled_rules=("PQL001", "PQL002"))
+```
+
+---
+
+## Complexity score
+
+`result.complexity.score` is **structural only** (0–100), not Prometheus runtime cost.
 
 | Score | Level |
 |------:|-------|
-| 0–20 | simple |
-| 21–45 | moderate |
-| 46–70 | complex |
-| 71–100 | very_complex |
+| 0–20 | `simple` |
+| 21–45 | `moderate` |
+| 46–70 | `complex` |
+| 71–100 | `very_complex` |
 
-This is **not** Prometheus execution cost. Runtime cost depends on series cardinality, Prometheus configuration, storage backend, recording rules, and actual metric data.
+Runtime cost depends on series cardinality, scrape config, storage, recording rules, and live data.
+
+---
 
 ## Limitations
 
-- Analysis is static and offline
-- Lint rules are heuristic and suppressible
-- YAML support extracts `expr` fields only (not Grafana dashboard panels / arbitrary YAML)
-- Parser compatibility follows `promql-parser` (Prometheus ~v2.45-oriented upstream)
-- Explanations never invent metric business meaning from names alone
-- No Grafana/Prometheus server integration in V1
+- Offline / static only — no Prometheus or Alertmanager API calls
+- Findings are heuristics; tune thresholds and disable noisy rules
+- YAML discovery looks for PromQL in common fields (`expr`, `condition`, `query`, …), not only Prometheus `alert`/`record` + `expr`; Grafana dashboards are still out of scope
+- `wild` = definition noise-**risk**, not observed firing rates
+- `vuln` = *potential* exposure, not confirmed vulnerabilities
+- `speakup` recommendations are not applied automatically; only a few alternatives are `structural_safe`
+- Near-duplicate detection is intentionally conservative
+- Parser behavior follows `promql-parser` (Prometheus ~v2.45-oriented)
+
+---
 
 ## Development
 
@@ -248,48 +605,44 @@ This is **not** Prometheus execution cost. Runtime cost depends on series cardin
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+
+# Tests
 pytest
+pytest tests/test_comeup_360.py -q
+
+# Lint
 ruff check src tests
+
+# Manual CLI smoke
+promql-analyze dude-look 'up'
+promql-analyze rushup tests --360 --fail-on never
 ```
 
-## Release / publishing (manual)
+---
+
+## Publishing
 
 Do **not** publish automatically from CI without review.
 
-1. **Local install**
+```bash
+pip install -e ".[dev]"
+promql-analyze --version
 
-   ```bash
-   pip install -e ".[dev]"
-   promql-analyze --version
-   ```
+python -m build
+python -m twine check dist/*
 
-2. **Build**
+# Smoke-test the wheel
+python -m venv /tmp/promql-analyzer-dist-test
+/tmp/promql-analyzer-dist-test/bin/pip install dist/*.whl
+/tmp/promql-analyzer-dist-test/bin/promql-analyze dude-look 'up'
+/tmp/promql-analyzer-dist-test/bin/promql-analyze rushup --help
 
-   ```bash
-   python -m build
-   ```
+# TestPyPI then PyPI
+python -m twine upload --repository testpypi dist/*
+python -m twine upload dist/*
+```
 
-3. **Test the distribution**
-
-   ```bash
-   python -m twine check dist/*
-   python -m venv /tmp/promql-analyzer-dist-test
-   /tmp/promql-analyzer-dist-test/bin/pip install dist/*.whl
-   /tmp/promql-analyzer-dist-test/bin/promql-analyze analyze 'up'
-   ```
-
-4. **Publish to TestPyPI**
-
-   ```bash
-   python -m twine upload --repository testpypi dist/*
-   pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple promql-analyzer
-   ```
-
-5. **Publish to PyPI**
-
-   ```bash
-   python -m twine upload dist/*
-   ```
+---
 
 ## License
 

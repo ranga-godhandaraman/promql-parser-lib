@@ -5,7 +5,31 @@ from __future__ import annotations
 from typing import Any
 
 from promql_analyzer.files import FileAnalysisReport
-from promql_analyzer.models import AnalysisResult, Severity
+from promql_analyzer.models import AnalysisResult, Finding, Severity
+
+
+def _finding_to_dict(finding: Finding) -> dict[str, Any]:
+    """Serialize a finding, including optional V2 repository fields when set."""
+    payload: dict[str, Any] = {
+        "rule_id": finding.rule_id,
+        "severity": finding.severity.value
+        if isinstance(finding.severity, Severity)
+        else str(finding.severity),
+        "message": finding.message,
+        "explanation": finding.explanation,
+        "suggestion": finding.suggestion,
+    }
+    if finding.category is not None:
+        payload["category"] = finding.category
+    if finding.score is not None:
+        payload["score"] = finding.score
+    if finding.evidence:
+        payload["evidence"] = list(finding.evidence)
+    if finding.file_path is not None:
+        payload["file_path"] = finding.file_path
+    if finding.rule_name is not None:
+        payload["rule_name"] = finding.rule_name
+    return payload
 
 
 def result_to_dict(result: AnalysisResult, *, explanation_style: str = "concise") -> dict[str, Any]:
@@ -48,18 +72,7 @@ def result_to_dict(result: AnalysisResult, *, explanation_style: str = "concise"
                 "contains_at_modifier": result.structure.features.contains_at_modifier,
             },
         },
-        "findings": [
-            {
-                "rule_id": finding.rule_id,
-                "severity": finding.severity.value
-                if isinstance(finding.severity, Severity)
-                else str(finding.severity),
-                "message": finding.message,
-                "explanation": finding.explanation,
-                "suggestion": finding.suggestion,
-            }
-            for finding in result.findings
-        ],
+        "findings": [_finding_to_dict(finding) for finding in result.findings],
         "complexity": {
             "score": result.complexity.score,
             "level": result.complexity.level.value,
